@@ -1,4 +1,6 @@
-NOSQL using MongoDB
+NOSQL using MongoDB (Database Final Report)
+_________________________________________________________________________________________________________________________________
+1) Data Type Setting
 db.transactions.updateMany(
   {},
   [
@@ -24,11 +26,14 @@ db.transactions.updateMany(
   ]
 )
 
+2) Revenue Attribute
 db.transactions.updateMany(
   {},
   [{ $set: { Revenue: { $multiply: ["$Quantity", "$UnitPrice"] } } }]
 )
-
+_________________________________________________________________________________________________________________________________
+3) Scenario 1: Revenue by Country
+_______________________________________
 db.transactions.explain("executionStats").aggregate([
   { $match: { Quantity: { $gt: 0 }, UnitPrice: { $gt: 0 } } },
   { $group: { _id: "$Country", totalRevenue: { $sum: "$Revenue" } } },
@@ -37,8 +42,36 @@ db.transactions.explain("executionStats").aggregate([
 ])
 
 db.transactions.createIndex({ InvoiceDate: 1 })
-
+_________________________________________________________________________________________________________________________________
+4) Scenario 2: Finding Specific Data
+_______________________________________
 db.transactions.explain("executionStats").aggregate([
   { $match: { Country: "United Kingdom", InvoiceDate: { $gte: ISODate("2011-11-01"), $lt: ISODate("2011-12-01") } } },
   { $group: { _id: "$Country", totalRevenue: { $sum: "$Revenue" } } }
 ])
+
+db.transactions.createIndex({ Country: 1, InvoiceDate: 1 })
+_________________________________________________________________________________________________________________________________
+5)	Scenario 3: Top Selling Product in a Specific Month
+_______________________________________
+db.transactions.explain("executionStats").aggregate([
+  {
+    $match: {
+      InvoiceDate: {
+        $gte: ISODate("2011-11-01"),
+        $lt: ISODate("2011-12-01")
+      },
+      Quantity: { $gt: 0 }
+    }
+  },
+  {
+    $group: {
+      _id: "$StockCode",
+      totalQuantity: { $sum: "$Quantity" }
+    }
+  },
+  { $sort: { totalQuantity: -1 } },
+  { $limit: 10 }
+])
+
+db.transactions.createIndex({ InvoiceDate: 1, StockCode: 1 })
