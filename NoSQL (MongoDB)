@@ -1,0 +1,44 @@
+NOSQL using MongoDB
+db.transactions.updateMany(
+  {},
+  [
+    {
+      $set: {
+        Quantity: { $toInt: "$Quantity" },
+        UnitPrice: { $toDouble: "$UnitPrice" },
+        CustomerID: {
+          $cond: [
+            { $or: [{ $eq: ["$CustomerID", ""] }, { $eq: ["$CustomerID", null] }] },
+            null,
+            { $toInt: "$CustomerID" }
+          ]
+        },
+        InvoiceDate: {
+          $dateFromString: {
+            dateString: "$InvoiceDate",
+            format: "%m/%d/%Y %H:%M"
+          }
+        }
+      }
+    }
+  ]
+)
+
+db.transactions.updateMany(
+  {},
+  [{ $set: { Revenue: { $multiply: ["$Quantity", "$UnitPrice"] } } }]
+)
+
+db.transactions.explain("executionStats").aggregate([
+  { $match: { Quantity: { $gt: 0 }, UnitPrice: { $gt: 0 } } },
+  { $group: { _id: "$Country", totalRevenue: { $sum: "$Revenue" } } },
+  { $sort: { totalRevenue: -1 } },
+  { $limit: 10 }
+])
+
+db.transactions.createIndex({ InvoiceDate: 1 })
+
+db.transactions.explain("executionStats").aggregate([
+  { $match: { Country: "United Kingdom", InvoiceDate: { $gte: ISODate("2011-11-01"), $lt: ISODate("2011-12-01") } } },
+  { $group: { _id: "$Country", totalRevenue: { $sum: "$Revenue" } } }
+])
