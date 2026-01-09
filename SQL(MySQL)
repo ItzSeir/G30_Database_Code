@@ -1,0 +1,132 @@
+USE onlineretail;
+
+DROP TABLE IF EXISTS raw_online_retail;
+CREATE TABLE raw_online_retail (
+    InvoiceNo VARCHAR(20),
+    StockCode VARCHAR(20),
+    Description VARCHAR(255),
+    Quantity INT,
+    InvoiceDate VARCHAR(30),
+    UnitPrice DECIMAL(10,2),
+    CustomerID INT,
+    Country VARCHAR(50)
+);
+
+SET GLOBAL local_infile = 1;
+
+LOAD DATA LOCAL INFILE
+'C:/Sunway University/DATABASE MANAGEMENT SYSTEMS/Assignment/retail.csv'
+INTO TABLE raw_online_retail
+CHARACTER SET latin1
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS
+(InvoiceNo, StockCode, Description, Quantity, InvoiceDate, UnitPrice, CustomerID, Country);
+
+SET SQL_SAFE_UPDATES = 0;
+
+UPDATE raw_online_retail
+SET InvoiceDate =
+    CASE
+        -- Format: DD/MM/YYYY HH:MM (day > 12)
+        WHEN SUBSTRING_INDEX(InvoiceDate, '/', 1) > 12
+        THEN STR_TO_DATE(InvoiceDate, '%d/%m/%Y %H:%i')
+
+        -- Otherwise assume: MM/DD/YYYY HH:MM
+        ELSE STR_TO_DATE(InvoiceDate, '%m/%d/%Y %H:%i')
+    END;
+    
+ALTER TABLE raw_online_retail
+MODIFY InvoiceDate DATETIME;
+
+-- a.	Scenario 1: Monthly Transaction Volume (Date Range Scan)
+
+SELECT COUNT(*) 
+FROM raw_online_retail
+WHERE InvoiceDate 
+BETWEEN '2010-12-01 00:00:00' AND '2010-12-31 23:59:59';
+-- run before optimization and after optimization
+
+EXPLAIN SELECT COUNT(*) 
+FROM raw_online_retail 
+WHERE InvoiceDate 
+BETWEEN '2010-12-01 00:00:00' AND '2010-12-31 23:59:59'; 
+-- to show number of row scan
+-- run before optimization and after optimization
+
+CREATE INDEX idx_invoice_date 
+ON raw_online_retail(InvoiceDate);
+
+-- b.	Scenario 2: Customer Activity Lookup (Point Lookup)
+
+SELECT * FROM raw_online_retail 
+WHERE StockCode = '85133A';
+-- run before optimization and after optimization
+
+Explain SELECT * FROM raw_online_retail 
+WHERE StockCode = '85133A';
+-- to show number of row scan
+-- run before optimization and after optimization
+
+CREATE INDEX idx_stock_code
+ON raw_online_retail(StockCode);
+
+-- c.	Scenario 3: High-Performance Aggregation (Covering Index)
+
+SELECT CustomerID, SUM(UnitPrice * Quantity) 
+FROM raw_online_retail 
+GROUP BY CustomerID;
+-- run before optimization and after optimization
+
+Explain SELECT CustomerID, SUM(UnitPrice * Quantity) 
+FROM raw_online_retail 
+GROUP BY CustomerID;
+-- to show number of row scan
+-- run before optimization and after optimization
+
+CREATE INDEX idx_money_covering 
+ON raw_online_retail(CustomerID, UnitPrice, Quantity);
+
+-- d.	Scenario 4: Managing Massive Historical Data (Table Partitioning)
+
+SELECT COUNT(*) FROM raw_online_retail 
+WHERE InvoiceDate 
+BETWEEN '2011-12-01' AND '2011-12-31';
+-- run before optimization
+
+Explain SELECT COUNT(*) FROM raw_online_retail 
+WHERE InvoiceDate 
+BETWEEN '2011-12-01' AND '2011-12-31';
+-- to show number of row scan
+-- run before optimization 
+
+CREATE TABLE retail_partitioned (
+    InvoiceNo VARCHAR(20),
+    StockCode VARCHAR(20),
+    Description VARCHAR(255),
+    Quantity INT,
+    InvoiceDate DATETIME,
+    UnitPrice DECIMAL(10,2),
+    CustomerID INT,
+    Country VARCHAR(50)
+)
+PARTITION BY RANGE ( YEAR(InvoiceDate) ) (
+    PARTITION p2010 VALUES LESS THAN (2011),
+    PARTITION p2011 VALUES LESS THAN (2012),
+    PARTITION p_future VALUES LESS THAN MAXVALUE
+);
+
+INSERT INTO retail_partitioned 
+SELECT * FROM raw_online_retail;
+
+SELECT COUNT(*) FROM retail_partitioned 
+WHERE InvoiceDate 
+BETWEEN '2011-12-01' AND '2011-12-31';
+-- run after optimization 
+
+Explain SELECT COUNT(*) FROM retail_partitioned 
+WHERE InvoiceDate 
+BETWEEN '2011-12-01' AND '2011-12-31';
+-- to show number of row scan
+-- run after optimization 
